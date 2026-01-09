@@ -16,11 +16,13 @@ const Index = () => {
     trainingProgress,
     mode,
     modelLoadError,
-    predict, 
+    predict,
     clearPredictions,
     trainOnCorrection,
     switchMode,
     resetModel,
+    downloadModel,
+    importModel,
     getClasses,
   } = useDigitRecognition();
 
@@ -35,6 +37,14 @@ const Index = () => {
   const handleCorrection = useCallback((correctLabel: string) => {
     trainOnCorrection(correctLabel);
   }, [trainOnCorrection]);
+
+  const handleDownload = useCallback(() => {
+    downloadModel();
+  }, [downloadModel]);
+
+  const handleImport = useCallback(async (files: FileList): Promise<boolean> => {
+    return await importModel(files);
+  }, [importModel]);
 
   return (
     <div className="min-h-screen neural-bg">
@@ -128,6 +138,8 @@ const Index = () => {
             <div className="w-full flex justify-center">
               <ModelControls
                 onReset={resetModel}
+                onDownload={handleDownload}
+                onImport={handleImport}
                 isLoading={isModelLoading}
                 mode={mode}
               />
