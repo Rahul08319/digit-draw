@@ -288,6 +288,130 @@ export const useDigitRecognition = () => {
     await loadModel();
   }, [mode, loadModel]);
 
+  const exportModel = useCallback(async (): Promise<{ modelJson: string; weightsData: ArrayBuffer } | null> => {
+    if (!model) {
+      console.error('No model to export');
+      return null;
+    }
+
+    try {
+      // Save model to a custom IOHandler that captures the data
+      const saveResult = await model.save(tf.io.withSaveHandler(async (artifacts) => {
+        const modelJson = {
+          modelTopology: artifacts.modelTopology,
+          weightsManifest: [{
+            paths: ['weights.bin'],
+            weights: artifacts.weightSpecs,
+          }],
+          format: 'layers-model',
+          generatedBy: 'TensorFlow.js',
+          mode: mode,
+        };
+
+        return {
+          modelArtifactsInfo: {
+            dateSaved: new Date(),
+            modelTopologyType: 'JSON',
+          },
+          modelJson: JSON.stringify(modelJson),
+          weightData: artifacts.weightData,
+        };
+      }));
+
+      // Access the data from the save result
+      const modelJson = JSON.stringify({
+        modelTopology: (model as any).toJSON(),
+        mode: mode,
+      });
+
+      // Get weights as ArrayBuffer
+      const weightData = await new Promise<ArrayBuffer>((resolve) => {
+        model.save(tf.io.withSaveHandler(async (artifacts) => {
+          resolve(artifacts.weightData as ArrayBuffer);
+          return { modelArtifactsInfo: { dateSaved: new Date(), modelTopologyType: 'JSON' } };
+        }));
+      });
+
+      return { modelJson, weightsData: weightData };
+    } catch (error) {
+      console.error('Error exporting model:', error);
+      return null;
+    }
+  }, [model, mode]);
+
+  const downloadModel = useCallback(async () => {
+    if (!model) {
+      console.error('No model to download');
+      return;
+    }
+
+    try {
+      // Use the built-in downloads handler
+      await model.save(`downloads://digit-recognition-${mode}`);
+      console.log('Model downloaded');
+    } catch (error) {
+      console.error('Error downloading model:', error);
+    }
+  }, [model, mode]);
+
+  const importModel = useCallback(async (files: FileList): Promise<boolean> => {
+    try {
+      if (files.length < 2) {
+        console.error('Need both model.json and weights.bin files');
+        return false;
+      }
+
+      // Find the JSON and bin files
+      let jsonFile: File | null = null;
+      let binFile: File | null = null;
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.name.endsWith('.json')) {
+          jsonFile = file;
+        } else if (file.name.endsWith('.bin')) {
+          binFile = file;
+        }
+      }
+
+      if (!jsonFile || !binFile) {
+        console.error('Missing model.json or weights.bin file');
+        return false;
+      }
+
+      // Read the JSON file to check mode compatibility
+      const jsonText = await jsonFile.text();
+      const jsonData = JSON.parse(jsonText);
+
+      // Load the model from files
+      const importedModel = await tf.loadLayersModel(tf.io.browserFiles([jsonFile, binFile]));
+
+      importedModel.compile({
+        optimizer: tf.train.adam(0.001),
+        loss: 'categoricalCrossentropy',
+        metrics: ['accuracy'],
+      });
+
+      // Dispose old model
+      if (modelRef.current) {
+        modelRef.current.dispose();
+      }
+
+      modelRef.current = importedModel;
+      setModel(importedModel);
+
+      // Save to IndexedDB
+      const modelKey = `indexeddb://digit-recognition-${mode}`;
+      await importedModel.save(modelKey);
+      console.log('Model imported and saved');
+
+      return true;
+    } catch (error) {
+      console.error('Error importing model:', error);
+      return false;
+    }
+  }, [mode]);
+
   return {
     isModelLoading,
     predictions,
@@ -301,6 +425,8 @@ export const useDigitRecognition = () => {
     trainOnCorrection,
     switchMode,
     resetModel,
+    downloadModel,
+    importModel,
     getClasses: () => getClasses(mode),
   };
 };
