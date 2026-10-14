@@ -190,6 +190,9 @@ Open [http://localhost:5173](http://localhost:5173) in your browser.
 ### 2. Python ML Suite & Backend API
 
 ```bash
+# Navigate to python ml suite
+cd python
+
 # Install Python dependencies
 pip install -r requirements.txt
 
@@ -214,6 +217,12 @@ The FastAPI REST documentation will be available at [http://127.0.0.1:8000/docs]
 
 ```
 digit-draw/
+├── python/                        # Offline training, evaluation & FastAPI server
+│   ├── app.py                     # FastAPI REST prediction server
+│   ├── evaluate.py                # Test metrics & confusion matrix
+│   ├── train_model.py             # TensorFlow/Keras CNN training pipeline
+│   ├── typesafe_router.py         # TypeSafe System One Python router
+│   └── requirements.txt           # Python package manifest
 ├── public/
 │   └── model/                     # Pre-trained bundled CNN weights
 │       ├── model.json             # Model topology & manifest
@@ -240,13 +249,9 @@ digit-draw/
 │   │   └── Index.tsx              # Main studio application
 │   ├── index.css                  # Apple design system CSS tokens
 │   └── main.tsx
-├── app.py                         # FastAPI REST prediction server
-├── evaluate.py                    # Test metrics & confusion matrix
-├── train_model.py                 # TensorFlow/Keras CNN training pipeline
-├── typesafe_router.py             # TypeSafe System One Python router
-├── requirements.txt               # Python package manifest
 ├── package.json                   # Node package manifest
 ├── tailwind.config.ts             # Tailwind Apple color & typography tokens
+├── vercel.json                    # Vercel Vite SPA rewrite configuration
 └── vite.config.ts                 # Vite bundle configuration
 ```
 
