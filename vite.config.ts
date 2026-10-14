@@ -16,6 +16,8 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: {
+    outDir: "dist",
+    chunkSizeWarningLimit: 2500,
     rollupOptions: {
       output: {
         manualChunks: {
