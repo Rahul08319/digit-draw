@@ -10,6 +10,7 @@
 [![Accuracy](https://img.shields.io/badge/MNIST%20Accuracy-99.2%25-00c853.svg?style=flat-square)](https://en.wikipedia.org/wiki/MNIST_database)
 [![TypeSafe](https://img.shields.io/badge/TypeSafe%20AI-System%20One-9c27b0.svg?style=flat-square)](https://docs.typesafe.ai)
 [![Design](https://img.shields.io/badge/Design-Apple%20Human%20Interface-000000.svg?style=flat-square&logo=apple)](https://developer.apple.com/design/)
+[![Deployment: Vercel](https://img.shields.io/badge/Deployment-Vercel-000000.svg?style=flat-square&logo=vercel)](https://digit-draw.vercel.app)
 
 *A photography-first, high-precision digit recognition studio that combines real-time client-side Convolutional Neural Networks with TypeSafe System One (Jev) semantic evaluation and an Apple-inspired fluid interactive game.*
 
