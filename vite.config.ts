@@ -15,4 +15,14 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          tensorflow: ["@tensorflow/tfjs"],
+          vendor: ["react", "react-dom"],
+        },
+      },
+    },
+  },
 }));
