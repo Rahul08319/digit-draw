@@ -1,56 +1,73 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
-
 @layer base {
   :root {
-    --background: 220 20% 6%;
-    --foreground: 210 40% 98%;
+    --background: 240 5% 96%; /* Parchment #f5f5f7 */
+    --foreground: 240 6% 12%; /* Ink #1d1d1f */
 
-    --card: 220 18% 10%;
-    --card-foreground: 210 40% 98%;
+    --card: 0 0% 100%; /* Pure White */
+    --card-foreground: 240 6% 12%;
 
-    --popover: 220 18% 10%;
-    --popover-foreground: 210 40% 98%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 6% 12%;
 
-    --primary: 185 100% 50%;
-    --primary-foreground: 220 20% 6%;
+    --primary: 211 100% 40%; /* Apple Action Blue #0066cc */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 220 15% 15%;
-    --secondary-foreground: 210 40% 98%;
+    --secondary: 240 5% 93%;
+    --secondary-foreground: 240 6% 12%;
 
-    --muted: 220 15% 18%;
-    --muted-foreground: 215 20% 55%;
+    --muted: 240 5% 90%;
+    --muted-foreground: 240 4% 46%; /* #86868b */
 
-    --accent: 280 100% 65%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 211 100% 40%;
+    --accent-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
-    --destructive-foreground: 210 40% 98%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 220 15% 20%;
-    --input: 220 15% 18%;
-    --ring: 185 100% 50%;
+    --border: 240 6% 90%;
+    --input: 240 6% 90%;
+    --ring: 211 100% 40%;
 
-    --radius: 0.75rem;
+    --radius: 1.125rem; /* 18px Apple card radius */
 
-    --success: 145 80% 45%;
-    --warning: 35 100% 55%;
-
-    --glow-primary: 0 0 30px hsl(185 100% 50% / 0.4);
-    --glow-accent: 0 0 30px hsl(280 100% 65% / 0.4);
-    --glow-success: 0 0 20px hsl(145 80% 45% / 0.4);
-
-    --gradient-primary: linear-gradient(135deg, hsl(185 100% 50%), hsl(200 100% 60%));
-    --gradient-accent: linear-gradient(135deg, hsl(280 100% 65%), hsl(320 100% 60%));
-    --gradient-dark: linear-gradient(180deg, hsl(220 20% 8%), hsl(220 20% 4%));
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
   }
 
   .dark {
-    --background: 220 20% 6%;
-    --foreground: 210 40% 98%;
+    --background: 0 0% 0%; /* Pure Black #000000 */
+    --foreground: 0 0% 100%; /* Pure White #ffffff */
+
+    --card: 240 3% 16%; /* Near-black tile #272729 */
+    --card-foreground: 0 0% 100%;
+
+    --popover: 240 3% 16%;
+    --popover-foreground: 0 0% 100%;
+
+    --primary: 211 100% 58%; /* Sky Link Blue #2997ff on dark */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 2% 20%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 240 2% 24%;
+    --muted-foreground: 0 0% 64%;
+
+    --accent: 211 100% 58%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 2% 22%;
+    --input: 240 2% 22%;
+    --ring: 211 100% 58%;
   }
 }
 
@@ -60,121 +77,44 @@
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', sans-serif;
-    background: var(--gradient-dark);
+    @apply bg-background text-foreground antialiased selection:bg-apple-blue selection:text-white;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Inter", sans-serif;
+    font-size: 17px; /* Apple signature 17px body copy */
+    line-height: 1.47;
+    letter-spacing: -0.022em;
     min-height: 100vh;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
+    letter-spacing: -0.028em; /* Signature Apple tight headline tracking */
+    font-weight: 600;
   }
 }
 
 @layer components {
-  .font-mono {
-    font-family: 'JetBrains Mono', monospace;
+  /* Apple tactile button micro-interaction */
+  .apple-btn {
+    @apply transition-transform duration-100 ease-out active:scale-95;
   }
 
-  .glow-primary {
-    box-shadow: var(--glow-primary);
+  .apple-pill-primary {
+    @apply inline-flex items-center justify-center rounded-full bg-apple-blue text-white font-normal px-5 py-2.5 text-[15px] shadow-xs hover:bg-apple-blue-hover active:scale-95 transition-all;
   }
 
-  .glow-accent {
-    box-shadow: var(--glow-accent);
+  .apple-pill-secondary {
+    @apply inline-flex items-center justify-center rounded-full bg-apple-surface-parchment dark:bg-apple-tile-1 border border-black/[0.08] dark:border-white/[0.1] text-apple-ink dark:text-white font-normal px-5 py-2.5 text-[15px] hover:border-black/20 dark:hover:border-white/25 active:scale-95 transition-all;
   }
 
-  .glow-success {
-    box-shadow: var(--glow-success);
+  /* Frosted Glass UI */
+  .frosted-glass {
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
   }
 
-  .text-glow {
-    text-shadow: 0 0 20px currentColor;
-  }
-
-  .canvas-container {
-    background: linear-gradient(145deg, hsl(220 18% 12%), hsl(220 18% 8%));
-    border: 2px solid hsl(220 15% 20%);
-    transition: all 0.3s ease;
-  }
-
-  .canvas-container:hover {
-    border-color: hsl(185 100% 50% / 0.5);
-    box-shadow: var(--glow-primary);
-  }
-
-  .prediction-card {
-    background: linear-gradient(145deg, hsl(220 18% 12%), hsl(220 18% 8%));
-    border: 1px solid hsl(220 15% 20%);
-  }
-
-  .confidence-bar {
-    background: hsl(220 15% 15%);
-    overflow: hidden;
-  }
-
-  .confidence-fill {
-    background: var(--gradient-primary);
-    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  .confidence-fill-highlight {
-    background: var(--gradient-accent);
-    box-shadow: var(--glow-accent);
-  }
-
-  .digit-grid {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 0.5rem;
-  }
-
-  .neural-bg {
-    background-image: 
-      radial-gradient(circle at 20% 80%, hsl(185 100% 50% / 0.05) 0%, transparent 50%),
-      radial-gradient(circle at 80% 20%, hsl(280 100% 65% / 0.05) 0%, transparent 50%);
-  }
-}
-
-@layer utilities {
-  .animate-pulse-glow {
-    animation: pulse-glow 2s ease-in-out infinite;
-  }
-
-  @keyframes pulse-glow {
-    0%, 100% {
-      opacity: 1;
-      filter: brightness(1);
-    }
-    50% {
-      opacity: 0.8;
-      filter: brightness(1.2);
-    }
-  }
-
-  .animate-fade-in {
-    animation: fade-in 0.5s ease-out;
-  }
-
-  @keyframes fade-in {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .animate-scale-in {
-    animation: scale-in 0.3s ease-out;
-  }
-
-  @keyframes scale-in {
-    from {
-      opacity: 0;
-      transform: scale(0.9);
-    }
-    to {
-      opacity: 1;
-      transform: scale(1);
-    }
+  /* Image pixelation for 28x28 tensors */
+  .image-pixelated {
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
   }
 }

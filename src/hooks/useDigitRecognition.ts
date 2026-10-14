@@ -1,9 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import * as tf from '@tensorflow/tfjs';
+import { preprocessCanvas, PreprocessingResult } from '@/lib/mnistPreprocessing';
+import { 
+  DrawingMetrics, 
+  TypeSafeEvaluationResult, 
+  computeEntropy, 
+  evaluateAndRouteWithSystemOne 
+} from '@/lib/typesafeRouting';
 
 export type RecognitionMode = 'digits' | 'alphanumeric';
 
-// 0-9 for digits, A-Z for letters = 36 classes total
 const DIGIT_CLASSES = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 const LETTER_CLASSES = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 
@@ -15,15 +21,20 @@ export const useDigitRecognition = () => {
   const [model, setModel] = useState<tf.LayersModel | null>(null);
   const [isModelLoading, setIsModelLoading] = useState(true);
   const [predictions, setPredictions] = useState<number[] | null>(null);
+  const [typeSafeResult, setTypeSafeResult] = useState<TypeSafeEvaluationResult | null>(null);
+  const [preprocessedPreview, setPreprocessedPreview] = useState<string>('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isTraining, setIsTraining] = useState(false);
   const [trainingProgress, setTrainingProgress] = useState(0);
   const [mode, setMode] = useState<RecognitionMode>('digits');
   const [modelLoadError, setModelLoadError] = useState<string | null>(null);
+  const [modelSource, setModelSource] = useState<'bundled_cnn' | 'indexeddb' | 'fresh_initialized'>('bundled_cnn');
+  
   const modelRef = useRef<tf.LayersModel | null>(null);
-  const lastImageDataRef = useRef<ImageData | null>(null);
+  const lastNormalizedTensorRef = useRef<Float32Array | null>(null);
+  const isPredictingRef = useRef<boolean>(false);
 
-  // Create the CNN model architecture
+  // Fallback: Create CNN architecture
   const createModel = useCallback((numClasses: number) => {
     const newModel = tf.sequential();
     
@@ -31,37 +42,32 @@ export const useDigitRecognition = () => {
     newModel.add(tf.layers.conv2d({
       inputShape: [28, 28, 1],
       kernelSize: 3,
-      filters: 32,
+      filters: 16,
       activation: 'relu',
       kernelInitializer: 'heNormal',
     }));
-    newModel.add(tf.layers.batchNormalization());
     newModel.add(tf.layers.maxPooling2d({ poolSize: 2 }));
     
     // Second convolutional layer
     newModel.add(tf.layers.conv2d({
       kernelSize: 3,
-      filters: 64,
+      filters: 32,
       activation: 'relu',
       kernelInitializer: 'heNormal',
     }));
-    newModel.add(tf.layers.batchNormalization());
     newModel.add(tf.layers.maxPooling2d({ poolSize: 2 }));
     
     // Third convolutional layer
     newModel.add(tf.layers.conv2d({
       kernelSize: 3,
-      filters: 128,
+      filters: 32,
       activation: 'relu',
       kernelInitializer: 'heNormal',
     }));
-    newModel.add(tf.layers.batchNormalization());
     
-    // Flatten and dense layers
+    // Flatten and dense
     newModel.add(tf.layers.flatten());
-    newModel.add(tf.layers.dropout({ rate: 0.25 }));
-    newModel.add(tf.layers.dense({ units: 256, activation: 'relu', kernelInitializer: 'heNormal' }));
-    newModel.add(tf.layers.dropout({ rate: 0.5 }));
+    newModel.add(tf.layers.dense({ units: 64, activation: 'relu', kernelInitializer: 'heNormal' }));
     newModel.add(tf.layers.dense({ units: numClasses, activation: 'softmax' }));
 
     newModel.compile({
@@ -73,17 +79,15 @@ export const useDigitRecognition = () => {
     return newModel;
   }, []);
 
-  // Load pre-trained weights or initialize model
+  // Load pre-trained model: bundled CNN -> IndexedDB -> fresh architecture
   const loadModel = useCallback(async () => {
     try {
       setIsModelLoading(true);
       setModelLoadError(null);
-      
-      const numClasses = mode === 'digits' ? 10 : 36;
-      
-      // Try to load pre-trained model from IndexedDB first
+
       const modelKey = `indexeddb://digit-recognition-${mode}`;
-      
+
+      // Check IndexedDB for user fine-tuned weights first
       try {
         const savedModel = await tf.loadLayersModel(modelKey);
         savedModel.compile({
@@ -92,44 +96,54 @@ export const useDigitRecognition = () => {
           metrics: ['accuracy'],
         });
         
-        if (modelRef.current) {
-          modelRef.current.dispose();
-        }
+        if (modelRef.current) modelRef.current.dispose();
         modelRef.current = savedModel;
         setModel(savedModel);
-        console.log('Loaded model from IndexedDB');
+        setModelSource('indexeddb');
+        setIsModelLoading(false);
+        return;
       } catch {
-        // No saved model, create a new one
-        console.log('No saved model found, creating new model...');
-        
-        const newModel = createModel(numClasses);
-        
-        if (modelRef.current) {
-          modelRef.current.dispose();
-        }
-        modelRef.current = newModel;
-        setModel(newModel);
-        
-        // Save the initial model to IndexedDB
+        // No IndexedDB model found, try bundled model
+      }
+
+      // Try loading pre-trained bundled model from public/model/model.json
+      if (mode === 'digits') {
         try {
-          await newModel.save(modelKey);
-          console.log('Initial model saved to IndexedDB');
-        } catch (saveError) {
-          console.log('Could not save model:', saveError);
+          const bundledModel = await tf.loadLayersModel('/model/model.json');
+          bundledModel.compile({
+            optimizer: tf.train.adam(0.001),
+            loss: 'categoricalCrossentropy',
+            metrics: ['accuracy'],
+          });
+          
+          if (modelRef.current) modelRef.current.dispose();
+          modelRef.current = bundledModel;
+          setModel(bundledModel);
+          setModelSource('bundled_cnn');
+          setIsModelLoading(false);
+          return;
+        } catch (bundledErr) {
+          console.warn('Could not load bundled model from /model/model.json:', bundledErr);
         }
       }
-      
+
+      // Fallback: Initialize fresh model
+      const numClasses = mode === 'digits' ? 10 : 36;
+      const newModel = createModel(numClasses);
+      if (modelRef.current) modelRef.current.dispose();
+      modelRef.current = newModel;
+      setModel(newModel);
+      setModelSource('fresh_initialized');
       setIsModelLoading(false);
     } catch (error) {
       console.error('Error loading model:', error);
-      setModelLoadError('Failed to load model. Please refresh the page.');
+      setModelLoadError('Failed to load neural network. Please reload.');
       setIsModelLoading(false);
     }
   }, [mode, createModel]);
 
   useEffect(() => {
     loadModel();
-
     return () => {
       if (modelRef.current) {
         modelRef.current.dispose();
@@ -137,87 +151,151 @@ export const useDigitRecognition = () => {
     };
   }, [loadModel]);
 
-  const preprocessImage = useCallback((imageData: ImageData): tf.Tensor4D => {
-    return tf.tidy(() => {
-      // Convert ImageData to tensor
-      let tensor = tf.browser.fromPixels(imageData, 1);
-      
-      // Resize to 28x28
-      tensor = tf.image.resizeBilinear(tensor as tf.Tensor3D, [28, 28]);
-      
-      // Normalize to 0-1
-      tensor = tensor.div(255.0);
-      
-      // Add batch dimension
-      return tensor.expandDims(0) as tf.Tensor4D;
-    });
-  }, []);
-
-  const predict = useCallback(async (imageData: ImageData | null) => {
-    if (!imageData || !model) {
+  /**
+   * High-accuracy Real-Time Canvas Prediction Pipeline
+   */
+  const predictCanvas = useCallback(async (
+    canvas: HTMLCanvasElement | null, 
+    strokeCount: number = 1
+  ) => {
+    if (!canvas || !modelRef.current) {
       setPredictions(null);
+      setTypeSafeResult(null);
+      setPreprocessedPreview('');
       return;
     }
 
-    lastImageDataRef.current = imageData;
-    setIsProcessing(true);
+    if (isPredictingRef.current) return;
+    isPredictingRef.current = true;
 
     try {
-      const tensor = preprocessImage(imageData);
-      const prediction = model.predict(tensor) as tf.Tensor;
-      const probabilities = await prediction.data();
-      
-      // Clean up tensors
-      tensor.dispose();
+      // Step 1: Preprocess canvas with MNIST standard bounding box & center of mass
+      const prepResult: PreprocessingResult = preprocessCanvas(canvas);
+      setPreprocessedPreview(prepResult.previewDataUrl);
+
+      if (!prepResult.hasContent) {
+        setPredictions(null);
+        setTypeSafeResult(null);
+        isPredictingRef.current = false;
+        return;
+      }
+
+      lastNormalizedTensorRef.current = prepResult.normalizedArray;
+
+      // Step 2: Feed 28x28 into model
+      const currentModel = modelRef.current;
+      const inputTensor = tf.tensor4d(prepResult.normalizedArray, [1, 28, 28, 1]);
+      const prediction = currentModel.predict(inputTensor) as tf.Tensor;
+      const probabilitiesTyped = await prediction.data();
+      const probsArray = Array.from(probabilitiesTyped);
+
+      inputTensor.dispose();
       prediction.dispose();
 
-      setPredictions(Array.from(probabilities));
-    } catch (error) {
-      console.error('Prediction error:', error);
-      setPredictions(null);
+      setPredictions(probsArray);
+
+      // Step 3: Compute TypeSafe System One Metrics & Route
+      const sorted = probsArray
+        .map((p, idx) => ({ prob: p, idx }))
+        .sort((a, b) => b.prob - a.prob);
+
+      const top1 = sorted[0];
+      const top2 = sorted[1] || { prob: 0, idx: 0 };
+      const margin = top1.prob - top2.prob;
+      const entropy = computeEntropy(probsArray);
+
+      const nonZeroPixels = prepResult.normalizedArray.filter(v => v > 0.05).length;
+      const pixelCoverage = nonZeroPixels / 784;
+
+      const boxW = prepResult.boundingBox ? prepResult.boundingBox.maxX - prepResult.boundingBox.minX : 20;
+      const boxH = prepResult.boundingBox ? prepResult.boundingBox.maxY - prepResult.boundingBox.minY : 20;
+      const aspectRatio = boxW / Math.max(1, boxH);
+
+      const comDist = Math.hypot(prepResult.centerOfMass.x - 14, prepResult.centerOfMass.y - 14);
+
+      const drawingMetrics: DrawingMetrics = {
+        strokeCount,
+        pixelCoverage,
+        aspectRatio,
+        density: pixelCoverage,
+        centerOfMassOffset: comDist,
+        fastPrediction: top1.idx,
+        fastConfidence: top1.prob,
+        secondaryPrediction: top2.idx,
+        secondaryConfidence: top2.prob,
+        margin,
+        entropy,
+      };
+
+      const classes = getClasses(mode);
+      const evalResult = evaluateAndRouteWithSystemOne(drawingMetrics, classes);
+      setTypeSafeResult(evalResult);
+
+    } catch (err) {
+      console.error('Inference error:', err);
     } finally {
-      setIsProcessing(false);
+      isPredictingRef.current = false;
     }
-  }, [model, preprocessImage]);
+  }, [mode]);
+
+  // Backward compatible predict method
+  const predict = useCallback(async (imageData: ImageData | null) => {
+    if (!imageData) {
+      setPredictions(null);
+      setTypeSafeResult(null);
+      setPreprocessedPreview('');
+      return;
+    }
+    // Create temporary canvas
+    const temp = document.createElement('canvas');
+    temp.width = imageData.width;
+    temp.height = imageData.height;
+    const ctx = temp.getContext('2d');
+    if (ctx) {
+      ctx.putImageData(imageData, 0, 0);
+      predictCanvas(temp, 1);
+    }
+  }, [predictCanvas]);
+
+  const clearPredictions = useCallback(() => {
+    setPredictions(null);
+    setTypeSafeResult(null);
+    setPreprocessedPreview('');
+    lastNormalizedTensorRef.current = null;
+  }, []);
 
   const trainOnCorrection = useCallback(async (correctLabel: string) => {
-    if (!model || !lastImageDataRef.current) {
+    if (!modelRef.current || !lastNormalizedTensorRef.current) {
       console.error('Cannot train: no model or image data');
       return;
     }
 
     const classes = getClasses(mode);
     const labelIndex = classes.indexOf(correctLabel);
-    
-    if (labelIndex === -1) {
-      console.error('Invalid label:', correctLabel);
-      return;
-    }
+    if (labelIndex === -1) return;
 
     setIsTraining(true);
     setTrainingProgress(0);
 
     try {
-      const imageData = lastImageDataRef.current;
-      const tensor = preprocessImage(imageData);
-      
-      // Create one-hot encoded label
+      const currentModel = modelRef.current;
+      const normalizedArray = lastNormalizedTensorRef.current;
+      const tensor = tf.tensor4d(normalizedArray, [1, 28, 28, 1]);
       const labelTensor = tf.oneHot(tf.tensor1d([labelIndex], 'int32'), classes.length);
 
-      // Data augmentation - create variations of the input
+      // Data augmentation
       const augmentedInputs: tf.Tensor4D[] = [tensor];
       const augmentedLabels: tf.Tensor2D[] = [labelTensor as tf.Tensor2D];
 
-      // Add slightly shifted/rotated versions
       for (let i = 0; i < 4; i++) {
         const augmented = tf.tidy(() => {
           const shifted = tf.image.cropAndResize(
             tensor,
             [[
-              0.05 * (Math.random() - 0.5),
-              0.05 * (Math.random() - 0.5),
-              1 + 0.05 * (Math.random() - 0.5),
-              1 + 0.05 * (Math.random() - 0.5)
+              0.06 * (Math.random() - 0.5),
+              0.06 * (Math.random() - 0.5),
+              1 + 0.06 * (Math.random() - 0.5),
+              1 + 0.06 * (Math.random() - 0.5)
             ]],
             [0],
             [28, 28]
@@ -228,13 +306,12 @@ export const useDigitRecognition = () => {
         augmentedLabels.push(labelTensor.clone() as tf.Tensor2D);
       }
 
-      const batchedInputs = tf.concat(augmentedInputs, 0);
-      const batchedLabels = tf.concat(augmentedLabels, 0);
+      const xs = tf.concat(augmentedInputs) as tf.Tensor4D;
+      const ys = tf.concat(augmentedLabels) as tf.Tensor2D;
 
-      // Train on the correction with multiple epochs
-      const epochs = 10;
+      const epochs = 12;
       for (let epoch = 0; epoch < epochs; epoch++) {
-        await model.fit(batchedInputs, batchedLabels, {
+        await currentModel.fit(xs, ys, {
           epochs: 1,
           batchSize: 5,
           shuffle: true,
@@ -243,184 +320,118 @@ export const useDigitRecognition = () => {
         setTrainingProgress(((epoch + 1) / epochs) * 100);
       }
 
-      // Clean up tensors
+      // Save updated model to IndexedDB
+      const modelKey = `indexeddb://digit-recognition-${mode}`;
+      await currentModel.save(modelKey);
+      setModelSource('indexeddb');
+
+      // Cleanup
+      xs.dispose();
+      ys.dispose();
       tensor.dispose();
       labelTensor.dispose();
-      batchedInputs.dispose();
-      batchedLabels.dispose();
       augmentedInputs.forEach(t => t.dispose());
       augmentedLabels.forEach(t => t.dispose());
 
-      // Save updated model
-      const modelKey = `indexeddb://digit-recognition-${mode}`;
-      await model.save(modelKey);
-      console.log('Model saved after training');
+      // Re-run inference with updated model
+      const tempTensor = tf.tensor4d(normalizedArray, [1, 28, 28, 1]);
+      const newPred = currentModel.predict(tempTensor) as tf.Tensor;
+      const newProb = await newPred.data();
+      setPredictions(Array.from(newProb));
+      tempTensor.dispose();
+      newPred.dispose();
 
-      // Re-run prediction with updated model
-      await predict(lastImageDataRef.current);
-    } catch (error) {
-      console.error('Training error:', error);
+    } catch (err) {
+      console.error('Fine-tuning error:', err);
     } finally {
       setIsTraining(false);
       setTrainingProgress(0);
     }
-  }, [model, mode, preprocessImage, predict]);
-
-  const clearPredictions = useCallback(() => {
-    setPredictions(null);
-    lastImageDataRef.current = null;
-  }, []);
+  }, [mode]);
 
   const switchMode = useCallback((newMode: RecognitionMode) => {
-    setMode(newMode);
-    setPredictions(null);
-    lastImageDataRef.current = null;
-  }, []);
+    if (newMode !== mode) {
+      setMode(newMode);
+      setPredictions(null);
+      setTypeSafeResult(null);
+    }
+  }, [mode]);
 
   const resetModel = useCallback(async () => {
-    const modelKey = `indexeddb://digit-recognition-${mode}`;
     try {
-      await tf.io.removeModel(modelKey);
-      console.log('Model removed from IndexedDB');
-    } catch {
-      // Model might not exist
+      setIsModelLoading(true);
+      const modelKey = `indexeddb://digit-recognition-${mode}`;
+      try {
+        await tf.io.removeModel(modelKey);
+      } catch {
+        // ok if not present
+      }
+      await loadModel();
+    } catch (err) {
+      console.error('Reset error:', err);
+    } finally {
+      setIsModelLoading(false);
     }
-    await loadModel();
   }, [mode, loadModel]);
 
-  const exportModel = useCallback(async (): Promise<{ modelJson: string; weightsData: ArrayBuffer } | null> => {
-    if (!model) {
-      console.error('No model to export');
-      return null;
-    }
-
-    try {
-      // Save model to a custom IOHandler that captures the data
-      const saveResult = await model.save(tf.io.withSaveHandler(async (artifacts) => {
-        const modelJson = {
-          modelTopology: artifacts.modelTopology,
-          weightsManifest: [{
-            paths: ['weights.bin'],
-            weights: artifacts.weightSpecs,
-          }],
-          format: 'layers-model',
-          generatedBy: 'TensorFlow.js',
-          mode: mode,
-        };
-
-        return {
-          modelArtifactsInfo: {
-            dateSaved: new Date(),
-            modelTopologyType: 'JSON',
-          },
-          modelJson: JSON.stringify(modelJson),
-          weightData: artifacts.weightData,
-        };
-      }));
-
-      // Access the data from the save result
-      const modelJson = JSON.stringify({
-        modelTopology: (model as any).toJSON(),
-        mode: mode,
-      });
-
-      // Get weights as ArrayBuffer
-      const weightData = await new Promise<ArrayBuffer>((resolve) => {
-        model.save(tf.io.withSaveHandler(async (artifacts) => {
-          resolve(artifacts.weightData as ArrayBuffer);
-          return { modelArtifactsInfo: { dateSaved: new Date(), modelTopologyType: 'JSON' } };
-        }));
-      });
-
-      return { modelJson, weightsData: weightData };
-    } catch (error) {
-      console.error('Error exporting model:', error);
-      return null;
-    }
-  }, [model, mode]);
-
   const downloadModel = useCallback(async () => {
-    if (!model) {
-      console.error('No model to download');
-      return;
-    }
-
+    if (!modelRef.current) return;
     try {
-      // Use the built-in downloads handler
-      await model.save(`downloads://digit-recognition-${mode}`);
-      console.log('Model downloaded');
-    } catch (error) {
-      console.error('Error downloading model:', error);
+      await modelRef.current.save(`downloads://digit-draw-${mode}-model`);
+    } catch (err) {
+      console.error('Download error:', err);
     }
-  }, [model, mode]);
+  }, [mode]);
 
   const importModel = useCallback(async (files: FileList): Promise<boolean> => {
     try {
-      if (files.length < 2) {
-        console.error('Need both model.json and weights.bin files');
-        return false;
+      setIsModelLoading(true);
+      const jsonFile = Array.from(files).find(f => f.name.endsWith('.json'));
+      const binFiles = Array.from(files).filter(f => f.name.endsWith('.bin'));
+
+      if (!jsonFile || binFiles.length === 0) {
+        throw new Error('Please select both a model.json and .bin weight file(s)');
       }
 
-      // Find the JSON and bin files
-      let jsonFile: File | null = null;
-      let binFile: File | null = null;
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (file.name.endsWith('.json')) {
-          jsonFile = file;
-        } else if (file.name.endsWith('.bin')) {
-          binFile = file;
-        }
-      }
-
-      if (!jsonFile || !binFile) {
-        console.error('Missing model.json or weights.bin file');
-        return false;
-      }
-
-      // Read the JSON file to check mode compatibility
-      const jsonText = await jsonFile.text();
-      const jsonData = JSON.parse(jsonText);
-
-      // Load the model from files
-      const importedModel = await tf.loadLayersModel(tf.io.browserFiles([jsonFile, binFile]));
-
+      const importedModel = await tf.loadLayersModel(tf.io.browserFiles([jsonFile, ...binFiles]));
       importedModel.compile({
         optimizer: tf.train.adam(0.001),
         loss: 'categoricalCrossentropy',
         metrics: ['accuracy'],
       });
 
-      // Dispose old model
-      if (modelRef.current) {
-        modelRef.current.dispose();
-      }
-
+      if (modelRef.current) modelRef.current.dispose();
       modelRef.current = importedModel;
       setModel(importedModel);
 
       // Save to IndexedDB
       const modelKey = `indexeddb://digit-recognition-${mode}`;
       await importedModel.save(modelKey);
-      console.log('Model imported and saved');
+      setModelSource('indexeddb');
 
       return true;
-    } catch (error) {
-      console.error('Error importing model:', error);
+    } catch (err) {
+      console.error('Import error:', err);
       return false;
+    } finally {
+      setIsModelLoading(false);
     }
   }, [mode]);
 
   return {
+    model,
     isModelLoading,
     predictions,
+    typeSafeResult,
+    preprocessedPreview,
     isProcessing,
     isTraining,
     trainingProgress,
     mode,
     modelLoadError,
+    modelSource,
     predict,
+    predictCanvas,
     clearPredictions,
     trainOnCorrection,
     switchMode,

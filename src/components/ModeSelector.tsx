@@ -1,5 +1,6 @@
 import { RecognitionMode } from '@/hooks/useDigitRecognition';
 import { Hash, Type } from 'lucide-react';
+import { sounds } from '@/lib/soundEffects';
 
 interface ModeSelectorProps {
   mode: RecognitionMode;
@@ -9,30 +10,32 @@ interface ModeSelectorProps {
 
 const ModeSelector = ({ mode, onModeChange, disabled }: ModeSelectorProps) => {
   return (
-    <div className="flex items-center gap-2 p-1 bg-secondary rounded-xl">
+    <div className="inline-flex items-center p-1 rounded-full bg-apple-surface-parchment dark:bg-apple-tile-1 border border-black/[0.08] dark:border-white/[0.1] shadow-xs">
       <button
-        onClick={() => onModeChange('digits')}
+        type="button"
+        onClick={() => { sounds.playTap(); onModeChange('digits'); }}
         disabled={disabled}
-        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-sm transition-all ${
+        className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 ${
           mode === 'digits'
-            ? 'bg-primary text-primary-foreground glow-primary'
-            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-        } disabled:opacity-50 disabled:cursor-not-allowed`}
+            ? 'bg-apple-blue text-white shadow-sm'
+            : 'text-apple-ink/70 dark:text-white/70 hover:text-apple-blue'
+        } disabled:opacity-40 disabled:pointer-events-none`}
       >
-        <Hash className="w-4 h-4" />
-        <span>0-9</span>
+        <Hash className="w-3.5 h-3.5" />
+        <span>Digits (0–9)</span>
       </button>
       <button
-        onClick={() => onModeChange('alphanumeric')}
+        type="button"
+        onClick={() => { sounds.playTap(); onModeChange('alphanumeric'); }}
         disabled={disabled}
-        className={`flex items-center gap-2 px-4 py-2 rounded-lg font-mono text-sm transition-all ${
+        className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-medium transition-all active:scale-95 ${
           mode === 'alphanumeric'
-            ? 'bg-primary text-primary-foreground glow-primary'
-            : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-        } disabled:opacity-50 disabled:cursor-not-allowed`}
+            ? 'bg-apple-blue text-white shadow-sm'
+            : 'text-apple-ink/70 dark:text-white/70 hover:text-apple-blue'
+        } disabled:opacity-40 disabled:pointer-events-none`}
       >
-        <Type className="w-4 h-4" />
-        <span>A-Z & 0-9</span>
+        <Type className="w-3.5 h-3.5" />
+        <span>Alphanumeric (0–Z)</span>
       </button>
     </div>
   );

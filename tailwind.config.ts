@@ -49,10 +49,46 @@ export default {
         },
         success: "hsl(var(--success))",
         warning: "hsl(var(--warning))",
+        // Apple Design System Tokens
+        apple: {
+          blue: "#0066cc",
+          "blue-hover": "#0071e3",
+          "blue-dark": "#2997ff",
+          ink: "#1d1d1f",
+          "ink-muted": "#86868b",
+          canvas: "#ffffff",
+          "surface-parchment": "#f5f5f7",
+          "surface-pearl": "#fafafc",
+          "tile-1": "#272729",
+          "tile-2": "#2a2a2c",
+          "tile-3": "#252527",
+          black: "#000000",
+        },
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
-        mono: ['JetBrains Mono', 'monospace'],
+        sans: [
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "SF Pro Display",
+          "SF Pro Text",
+          "Inter",
+          "Helvetica Neue",
+          "sans-serif",
+        ],
+        mono: [
+          "SF Mono",
+          "JetBrains Mono",
+          "Menlo",
+          "monospace",
+        ],
+      },
+      letterSpacing: {
+        "apple-tight": "-0.022em",
+        "apple-hero": "-0.035em",
+      },
+      boxShadow: {
+        "apple-card": "0 2px 10px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.02)",
+        "apple-product": "rgba(0, 0, 0, 0.22) 3px 5px 30px 0px",
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -68,15 +104,20 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
-        "pulse-glow": {
-          "0%, 100%": { opacity: "1", filter: "brightness(1)" },
-          "50%": { opacity: "0.8", filter: "brightness(1.2)" },
+        "fade-in": {
+          from: { opacity: "0", transform: "translateY(4px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "scale-in": {
+          from: { opacity: "0", transform: "scale(0.95)" },
+          to: { opacity: "1", transform: "scale(1)" },
         },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
-        "pulse-glow": "pulse-glow 2s ease-in-out infinite",
+        "fade-in": "fade-in 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
+        "scale-in": "scale-in 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
       },
     },
   },
