@@ -109,7 +109,8 @@ export const useDigitRecognition = () => {
       // Try loading pre-trained bundled model from public/model/model.json
       if (mode === 'digits') {
         try {
-          const bundledModel = await tf.loadLayersModel('/model/model.json');
+          const baseUrl = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
+          const bundledModel = await tf.loadLayersModel(`${baseUrl}/model/model.json`);
           bundledModel.compile({
             optimizer: tf.train.adam(0.001),
             loss: 'categoricalCrossentropy',

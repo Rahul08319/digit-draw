@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState, useCallback } from 'react';
-import { RotateCcw, Trash2, Eraser, Pen, ZoomIn } from 'lucide-react';
+import { RotateCcw, Trash2, Eraser, Pen } from 'lucide-react';
 import { sounds } from '@/lib/soundEffects';
 
 interface DrawingCanvasProps {
@@ -30,6 +30,17 @@ const DrawingCanvas = ({
   const strokeCountRef = useRef<number>(0);
   const rafIdRef = useRef<number | null>(null);
   const lastThrottleTimeRef = useRef<number>(0);
+
+  // Gentle Apple-style haptic trigger on mobile
+  const triggerHaptic = useCallback((ms: number = 12) => {
+    try {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate(ms);
+      }
+    } catch {
+      // Haptics suppression
+    }
+  }, []);
 
   const getContext = useCallback(() => {
     const canvas = canvasRef.current;
@@ -115,6 +126,7 @@ const DrawingCanvas = ({
     setIsDrawing(true);
     setHasDrawn(true);
     sounds.playTap();
+    triggerHaptic(12);
     triggerCanvasUpdate(false);
   };
 
@@ -151,6 +163,7 @@ const DrawingCanvas = ({
     if (!ctx || !canvas || strokeHistory.length === 0) return;
 
     sounds.playTap();
+    triggerHaptic(10);
     const previous = strokeHistory[strokeHistory.length - 1];
     setStrokeHistory(prev => prev.slice(0, -1));
     ctx.putImageData(previous, 0, 0);
@@ -164,6 +177,7 @@ const DrawingCanvas = ({
 
   const handleClear = () => {
     sounds.playTap();
+    triggerHaptic(20);
     initCanvas();
     setHasDrawn(false);
     setStrokeHistory([]);
@@ -226,7 +240,7 @@ const DrawingCanvas = ({
         <div className="flex items-center p-1 rounded-full bg-apple-surface-parchment dark:bg-apple-tile-1 border border-black/5 dark:border-white/10">
           <button
             type="button"
-            onClick={() => { sounds.playTap(); setTool('pen'); }}
+            onClick={() => { sounds.playTap(); triggerHaptic(8); setTool('pen'); }}
             aria-label="Draw Tool"
             className={`flex items-center justify-center w-8 h-8 rounded-full transition-all active:scale-95 ${
               tool === 'pen'
@@ -238,7 +252,7 @@ const DrawingCanvas = ({
           </button>
           <button
             type="button"
-            onClick={() => { sounds.playTap(); setTool('eraser'); }}
+            onClick={() => { sounds.playTap(); triggerHaptic(8); setTool('eraser'); }}
             aria-label="Eraser Tool"
             className={`flex items-center justify-center w-8 h-8 rounded-full transition-all active:scale-95 ${
               tool === 'eraser'
@@ -256,7 +270,7 @@ const DrawingCanvas = ({
             <button
               key={sw.label}
               type="button"
-              onClick={() => { sounds.playTap(); setStrokeWidth(sw.value); }}
+              onClick={() => { sounds.playTap(); triggerHaptic(8); setStrokeWidth(sw.value); }}
               className={`px-2.5 py-1 text-[11px] font-medium rounded-full transition-all active:scale-95 ${
                 strokeWidth === sw.value
                   ? 'bg-white dark:bg-apple-tile-2 text-apple-ink dark:text-white shadow-xs'

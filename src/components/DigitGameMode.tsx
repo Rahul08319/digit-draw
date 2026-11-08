@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import DrawingCanvas from '@/components/DrawingCanvas';
 import { sounds } from '@/lib/soundEffects';
-import { Play, RotateCcw, Trophy, Flame, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Play, RotateCcw, Trophy, Flame, Sparkles, CheckCircle2, Volume2, VolumeX, Zap } from 'lucide-react';
 
 interface DigitGameModeProps {
   onCanvasChange: (canvas: HTMLCanvasElement | null, strokeCount: number) => void;
@@ -11,22 +11,29 @@ interface DigitGameModeProps {
 }
 
 type GameState = 'idle' | 'playing' | 'round_success' | 'game_over';
+type Difficulty = 'casual' | 'standard' | 'speedrun';
 
-const ROUND_TIME_SECONDS = 7;
+const DIFFICULTY_CONFIG: Record<Difficulty, { label: string; time: number; scoreMultiplier: number; description: string }> = {
+  casual: { label: 'Casual', time: 10, scoreMultiplier: 0.8, description: '10s per round — relaxed practice' },
+  standard: { label: 'Standard', time: 7, scoreMultiplier: 1.0, description: '7s per round — the classic sprint' },
+  speedrun: { label: 'Speedrun', time: 4, scoreMultiplier: 1.5, description: '4s per round — lightning reflexes' },
+};
+
 const TOTAL_ROUNDS = 8;
 
 const DigitGameMode = ({
   onCanvasChange,
   predictions,
-  classes,
   previewUrl,
 }: DigitGameModeProps) => {
   const [gameState, setGameState] = useState<GameState>('idle');
+  const [difficulty, setDifficulty] = useState<Difficulty>('standard');
   const [targetDigit, setTargetDigit] = useState<number>(7);
   const [currentRound, setCurrentRound] = useState<number>(1);
   const [score, setScore] = useState<number>(0);
   const [streak, setStreak] = useState<number>(0);
-  const [timeLeft, setTimeLeft] = useState<number>(ROUND_TIME_SECONDS);
+  const [timeLeft, setTimeLeft] = useState<number>(DIFFICULTY_CONFIG.standard.time);
+  const [isAudioEnabled, setIsAudioEnabled] = useState<boolean>(() => sounds.enabled);
   const [highScore, setHighScore] = useState<number>(() => {
     try {
       return Number(localStorage.getItem('digit_sprint_highscore') || '0');
@@ -38,6 +45,24 @@ const DigitGameMode = ({
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const roundMatchedRef = useRef<boolean>(false);
   const canvasKeyRef = useRef<number>(0);
+
+  // Trigger gentle Apple haptic vibration on mobile
+  const triggerHaptic = useCallback((ms: number = 20) => {
+    try {
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        navigator.vibrate(ms);
+      }
+    } catch {
+      // Haptics policy suppression
+    }
+  }, []);
+
+  const toggleAudio = useCallback(() => {
+    const next = !isAudioEnabled;
+    sounds.enabled = next;
+    setIsAudioEnabled(next);
+    if (next) sounds.playTap();
+  }, [isAudioEnabled]);
 
   // Generate a random digit distinct from current
   const getRandomDigit = useCallback((exclude?: number): number => {
@@ -51,16 +76,18 @@ const DigitGameMode = ({
   // Start new game
   const startGame = useCallback(() => {
     sounds.playTap();
+    triggerHaptic(30);
     const firstDigit = getRandomDigit();
+    const roundTime = DIFFICULTY_CONFIG[difficulty].time;
     setTargetDigit(firstDigit);
     setCurrentRound(1);
     setScore(0);
     setStreak(0);
-    setTimeLeft(ROUND_TIME_SECONDS);
+    setTimeLeft(roundTime);
     roundMatchedRef.current = false;
     canvasKeyRef.current += 1;
     setGameState('playing');
-  }, [getRandomDigit]);
+  }, [difficulty, getRandomDigit, triggerHaptic]);
 
   // Handle round completion (Success)
   const handleSuccess = useCallback(() => {
@@ -70,11 +97,13 @@ const DigitGameMode = ({
     const newStreak = streak + 1;
     setStreak(newStreak);
     sounds.playSuccess(newStreak);
+    triggerHaptic(newStreak > 2 ? 40 : 25);
 
-    // Calculate score: base 100 + speed bonus + streak bonus
+    // Calculate score: (base 100 + speed bonus + streak bonus) * difficulty multiplier
+    const mult = DIFFICULTY_CONFIG[difficulty].scoreMultiplier;
     const speedBonus = Math.round(timeLeft * 25);
     const streakBonus = (newStreak - 1) * 50;
-    const addedScore = 100 + speedBonus + streakBonus;
+    const addedScore = Math.round((100 + speedBonus + streakBonus) * mult);
     const newScore = score + addedScore;
     setScore(newScore);
 
@@ -93,18 +122,20 @@ const DigitGameMode = ({
     setTimeout(() => {
       if (currentRound >= TOTAL_ROUNDS) {
         sounds.playGameOver();
+        triggerHaptic(60);
         setGameState('game_over');
       } else {
         const nextTarget = getRandomDigit(targetDigit);
+        const roundTime = DIFFICULTY_CONFIG[difficulty].time;
         setTargetDigit(nextTarget);
         setCurrentRound(r => r + 1);
-        setTimeLeft(ROUND_TIME_SECONDS);
+        setTimeLeft(roundTime);
         roundMatchedRef.current = false;
         canvasKeyRef.current += 1;
         setGameState('playing');
       }
     }, 600);
-  }, [currentRound, getRandomDigit, highScore, score, streak, targetDigit, timeLeft]);
+  }, [currentRound, difficulty, getRandomDigit, highScore, score, streak, targetDigit, timeLeft, triggerHaptic]);
 
   // Check live predictions against target digit
   useEffect(() => {
@@ -131,14 +162,18 @@ const DigitGameMode = ({
       return;
     }
 
+    const roundDuration = DIFFICULTY_CONFIG[difficulty].time;
+
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) {
           // Time up for round
           sounds.playTick();
+          triggerHaptic(15);
           setStreak(0);
           if (currentRound >= TOTAL_ROUNDS) {
             sounds.playGameOver();
+            triggerHaptic(50);
             setGameState('game_over');
             return 0;
           } else {
@@ -146,11 +181,12 @@ const DigitGameMode = ({
             setTargetDigit(next);
             setCurrentRound(r => r + 1);
             canvasKeyRef.current += 1;
-            return ROUND_TIME_SECONDS;
+            return roundDuration;
           }
         }
         if (prev <= 3) {
           sounds.playTick();
+          triggerHaptic(10);
         }
         return prev - 1;
       });
@@ -159,14 +195,21 @@ const DigitGameMode = ({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [currentRound, gameState, getRandomDigit, targetDigit]);
+  }, [currentRound, difficulty, gameState, getRandomDigit, targetDigit, triggerHaptic]);
+
+  // Live top prediction info for real-time perception feedback
+  const topGuess = predictions ? (() => {
+    const max = Math.max(...predictions);
+    const idx = predictions.indexOf(max);
+    return { digit: idx, confidence: max };
+  })() : null;
 
   return (
     <div className="w-full max-w-4xl mx-auto flex flex-col items-center">
       {/* Apple Arcade Header Strip */}
       <div className="w-full flex items-center justify-between px-6 py-3.5 mb-6 rounded-[20px] bg-apple-surface-parchment/80 dark:bg-apple-tile-1/80 backdrop-blur-xl border border-black/[0.06] dark:border-white/[0.08] shadow-apple-card">
         {/* Score & Streak */}
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-4">
           <div className="flex flex-col">
             <span className="text-[11px] font-semibold text-apple-ink/50 dark:text-white/50 uppercase tracking-wider">Score</span>
             <span className="text-xl font-bold font-mono text-apple-ink dark:text-white">{score}</span>
@@ -193,10 +236,22 @@ const DigitGameMode = ({
           </div>
         </div>
 
-        {/* High Score Pill */}
-        <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/5 dark:bg-white/5 text-xs text-apple-ink/70 dark:text-white/70">
-          <Trophy className="w-3.5 h-3.5 text-amber-500" />
-          <span className="font-mono font-medium">{highScore}</span>
+        {/* Controls: Sound Toggle & Highscore */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleAudio}
+            title={isAudioEnabled ? "Mute audio" : "Enable audio"}
+            aria-label={isAudioEnabled ? "Mute audio" : "Enable audio"}
+            className="p-1.5 rounded-full bg-black/5 dark:bg-white/5 text-apple-ink/60 dark:text-white/60 hover:text-apple-ink dark:hover:text-white transition-all active:scale-95"
+          >
+            {isAudioEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4 text-red-500/70" />}
+          </button>
+
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/5 dark:bg-white/5 text-xs text-apple-ink/70 dark:text-white/70">
+            <Trophy className="w-3.5 h-3.5 text-amber-500" />
+            <span className="font-mono font-medium">{highScore}</span>
+          </div>
         </div>
       </div>
 
@@ -209,9 +264,39 @@ const DigitGameMode = ({
           <h2 className="text-2xl font-semibold tracking-tight text-apple-ink dark:text-white mb-2">
             Digit Sprint Challenge
           </h2>
-          <p className="text-[15px] leading-relaxed text-apple-ink/70 dark:text-white/70 mb-8 max-w-xs mx-auto">
+          <p className="text-[15px] leading-relaxed text-apple-ink/70 dark:text-white/70 mb-6 max-w-xs mx-auto">
             Test your drawing speed against real-time on-device CNN intelligence. Draw the requested digits before time expires!
           </p>
+
+          {/* Difficulty Selector */}
+          <div className="mb-8">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-apple-ink/50 dark:text-white/50 block mb-2.5">
+              Select Pace
+            </span>
+            <div className="inline-flex p-1 rounded-full bg-apple-surface-parchment dark:bg-apple-tile-2 border border-black/5 dark:border-white/5">
+              {(['casual', 'standard', 'speedrun'] as Difficulty[]).map(d => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => {
+                    sounds.playTap();
+                    setDifficulty(d);
+                    setTimeLeft(DIFFICULTY_CONFIG[d].time);
+                  }}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-all ${
+                    difficulty === d
+                      ? 'bg-apple-canvas dark:bg-apple-tile-1 text-apple-blue dark:text-white shadow-xs'
+                      : 'text-apple-ink/60 dark:text-white/60 hover:text-apple-ink'
+                  }`}
+                >
+                  {DIFFICULTY_CONFIG[d].label}
+                </button>
+              ))}
+            </div>
+            <p className="text-[12px] text-apple-ink/50 dark:text-white/50 mt-2">
+              {DIFFICULTY_CONFIG[difficulty].description}
+            </p>
+          </div>
 
           <button
             type="button"
@@ -231,7 +316,7 @@ const DigitGameMode = ({
             Challenge Complete!
           </h2>
           <p className="text-sm text-apple-ink/60 dark:text-white/60 mb-6">
-            You scored <strong className="text-apple-blue font-mono font-semibold">{score} points</strong> across {TOTAL_ROUNDS} rounds.
+            You scored <strong className="text-apple-blue font-mono font-semibold">{score} points</strong> on {DIFFICULTY_CONFIG[difficulty].label} mode.
           </p>
 
           <div className="grid grid-cols-2 gap-3 mb-8 text-center">
@@ -286,13 +371,13 @@ const DigitGameMode = ({
                   className={`h-full rounded-full transition-all duration-1000 linear ${
                     timeLeft <= 2 ? 'bg-red-500' : 'bg-apple-blue'
                   }`}
-                  style={{ width: `${(timeLeft / ROUND_TIME_SECONDS) * 100}%` }}
+                  style={{ width: `${(timeLeft / DIFFICULTY_CONFIG[difficulty].time) * 100}%` }}
                 />
               </div>
             </div>
           </div>
 
-          {/* Interactive Drawing Canvas */}
+          {/* Interactive Drawing Canvas & Live AI Readout */}
           <div className="flex flex-col items-center">
             <DrawingCanvas
               key={canvasKeyRef.current}
@@ -300,6 +385,27 @@ const DigitGameMode = ({
               onClear={() => {}}
               previewUrl={previewUrl}
             />
+
+            {/* Live AI Perception Feedback */}
+            <div className="mt-3.5 flex items-center gap-2 px-4 py-1.5 rounded-full bg-apple-surface-parchment/90 dark:bg-apple-tile-1/90 backdrop-blur-md border border-black/5 dark:border-white/10 text-xs shadow-xs transition-all">
+              <span className={`w-2 h-2 rounded-full ${
+                topGuess && topGuess.digit === targetDigit && topGuess.confidence >= 0.5
+                  ? 'bg-emerald-500 animate-ping'
+                  : 'bg-apple-blue animate-pulse'
+              }`} />
+              <span className="text-apple-ink/60 dark:text-white/60 font-medium">Neural State:</span>
+              {topGuess && topGuess.confidence > 0.3 ? (
+                <span className={`font-mono font-semibold ${
+                  topGuess.digit === targetDigit ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-apple-ink dark:text-white'
+                }`}>
+                  Seeing {topGuess.digit} ({Math.round(topGuess.confidence * 100)}%)
+                </span>
+              ) : (
+                <span className="text-apple-ink/40 dark:text-white/40 italic flex items-center gap-1">
+                  <Zap className="w-3 h-3" /> Waiting for stroke...
+                </span>
+              )}
+            </div>
           </div>
         </div>
       )}
